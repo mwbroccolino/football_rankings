@@ -52,6 +52,8 @@ def get_projections(pos):
                 stats["rush_yards"] = get_stat(data[i+7])
                 stats["rush_tds"]   = get_stat(data[i+8])
                 stats["fumbles"]    = get_stat(data[i+9])
+            
+                stats["pass_icmp"]  = stats["pass_att"] - stats["pass_cmp"] 
             elif pos == "RB":
                 stats["rush_att"]   = get_stat(data[i+1])
                 stats["rush_yards"] = get_stat(data[i+2])
@@ -80,7 +82,7 @@ def get_projections(pos):
                 stats["ff"]      = get_stat(data[i+4])
                 stats["td"]      = get_stat(data[i+5])
                 stats["safety"]  = get_stat(data[i+6])
-                stats["pa"]      = get_stat(data[i+7])
+                stats["pa"]      = get_stat(data[i+7]) / 16.0
                 stats["yds_agn"] = get_stat(data[i+8])
             elif pos == "K":
                 stats["fg"]   = get_stat(data[i+1])
@@ -89,7 +91,87 @@ def get_projections(pos):
             else:
                 print "Unexpected position: %s" % pos
             projections[tag] = stats
-    return projections 
+    return projections
+
+def score_fantasy_points(projections): 
+    # mean 
+    mean = 0.0
+    cnt = 0 
+    for player in projections: 
+        mean += projections[player]["fantasy_points"]
+        cnt += 1
+    mean /= cnt 
+    print "Mean = %f" % mean
+
+    # std_dev
+    std_dev = 0.0
+    for player in projections: 
+        std_dev += (projections[player]["fantasy_points"] - mean)**2
+    std_dev /= cnt
+
+    print "Std dev = %f" % std_dev
+
+    # score
+    for player in projections: 
+        projections[player]["score"] = (projections[player]["fantasy_points"] - mean) / std_dev 
+
+    for player in projections: 
+        print "%s %f" % (player, projections[player]["score"])
+
+    raw_input() 
+
+def compute_fantasy_points(projections): 
+    scoring = {"pass_icmp"  :-.3,
+               "pass_cmp"   :.5, 
+               "pass_yards" :.04,
+               "pass_tds"   :6, 
+               "pass_ints"  :-4, 
+               "rush_att"   :.2,
+               "rush_yards" :.1, 
+               "rush_tds"   :6, 
+               "rec"        :1, 
+               "rec_yards"  :.1, 
+               "rec_tds"    :6, 
+               "fumbles"    :-2, 
+               "sack"       :1, 
+               "int"        :2, 
+               "fr"         :1, 
+               "ff"         :1, 
+               "td"         :6, 
+               "safety"     :2,
+               "pa"         :0, 
+               "yds_agn"    :0, 
+               "fg"         :3,
+               "fga"        :-1, 
+               "xpts"       :1}
+
+    #---------------------------------
+    # Apply the scoring to the players
+    #---------------------------------
+    for player in projections:
+        player_stats = projections[player] 
+        player_stats["fantasy_points"] = 0.0
+        for key in player_stats.keys():
+            if key in [ "fantasy_points", "pass_att"]: continue 
+            player_stats["fantasy_points"] += float(scoring[key])*float(player_stats[key])
+   
+
+        if pos == "DST":
+            if player_stats["pa"] < 7:
+                player_stats["fantasy_points"] += 8*16
+            elif player_stats["pa"] < 14:
+                player_stats["fantasy_points"] += 6*16
+            elif player_stats["pa"] < 22:
+                player_stats["fantasy_points"] += 2*16
+            elif player_stats["pa"] < 28:
+                player_stats["fantasy_points"] += -2*16
+            elif player_stats["pa"] < 35:
+                player_stats["fantasy_points"] += -4*16
+            elif player_stats["pa"] < 45:
+                player_stats["fantasy_points"] += -8*16
+            else: # more than 45
+                player_stats["fantasy_points"] += -16*16
+    
 if __name__ == "__main__":
     #---------------------------------------------
     # Get the latest projections from fantasy pros
@@ -99,3 +181,15 @@ if __name__ == "__main__":
 
     for pos in positions:
         projections[pos] = get_projections(pos)
+
+    #-----------------------------------------------
+    # Compute the fantasy points for the projections
+    #-----------------------------------------------
+    for pos in positions: 
+        compute_fantasy_points(projections[pos])
+
+    #-----------------
+    # Score the points
+    #-----------------
+    for pos in positions: 
+        score_fantasy_points(projections[pos])
